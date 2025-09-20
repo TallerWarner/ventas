@@ -12,10 +12,66 @@
     table { width:100%; border-collapse:collapse; margin-top:1rem; }
     th, td { border:1px solid #444; padding:.5rem; text-align:center; }
     th { background:#333; }
+    #vistaPrevia { margin-top:.5rem; font-weight:bold; color:#4caf50; }
+
+    /* Estilos modal */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      background: #222;
+      padding: 2rem;
+      border-radius: 10px;
+      max-width: 600px;       /* Más grande */
+      width: 90%;
+      max-height: 80%;
+      overflow-y: auto;
+      text-align: center;
+      box-shadow: 0 0 20px rgba(0,0,0,0.7);
+      animation: fadeIn 0.3s ease;
+    }
+    .modal-content h3 { color:#ffcc00; margin-bottom:1rem; }
+    .modal-content p { margin: .5rem 0; }
+    .close-btn {
+      margin-top: 1rem;
+      padding: .5rem 1rem;
+      background: #ffcc00;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
   </style>
 </head>
 <body>
   <h1> Almacén de Ventas - Taller</h1>
+
+  <!-- Registro de mecánicos -->
+  <div class="card">
+    <h2>👨‍🔧 Registrar Mecánico</h2>
+    <input id="nombreMecanico" placeholder="Nombre del mecánico">
+    <select id="porcentajeMecanico">
+      <option value="0">Sin porcentaje</option>
+      <option value="0.20">20%</option>
+      <option value="0.30">30%</option>
+      <option value="0.45">45%</option>
+      <option value="0.60">60%</option>
+      <option value="0.70">70%</option>
+    </select>
+    <button onclick="registrarMecanico()">Registrar Mecánico</button>
+  </div>
 
   <!-- Registro de productos -->
   <div class="card">
@@ -34,8 +90,20 @@
   <!-- Registrar venta -->
   <div class="card">
     <h2>💰 Registrar Venta</h2>
-    <select id="productoVenta"></select>
-    <input id="cantidadVenta" type="number" placeholder="Cantidad">
+    <select id="productoVenta" onchange="actualizarVistaPrevia()"></select>
+    <input id="cantidadVenta" type="number" placeholder="Cantidad"><br>
+    <label>Mecánico:</label>
+    <select id="mecanicoVenta" onchange="actualizarVistaPrevia()"></select><br>
+    <label>Porcentaje extra:</label>
+    <select id="extraPorcentaje" onchange="actualizarVistaPrevia()">
+      <option value="0">Sin extra</option>
+      <option value="0.20">20%</option>
+      <option value="0.30">30%</option>
+      <option value="0.45">45%</option>
+      <option value="0.60">60%</option>
+      <option value="0.70">70%</option>
+    </select><br>
+    <div id="vistaPrevia">💲 Precio unitario final: -</div>
     <button onclick="registrarVenta()">Registrar Venta</button>
   </div>
 
@@ -58,6 +126,7 @@
       <option value="compra">Compras</option>
       <option value="registro">Registros</option>
       <option value="edicion">Ediciones</option>
+      <option value="mecanico">Mecánicos</option>
     </select>
     <input type="date" id="filtroFecha" onchange="mostrarHistorial()">
     <table>
@@ -73,16 +142,48 @@
     <button onclick="limpiezaGeneral()">🧹 Limpieza General (Respaldo automático)</button>
   </div>
 
+  <!-- Modal de confirmación -->
+  <div id="ventaModal" class="modal">
+    <div class="modal-content">
+      <h3>✅ Venta Registrada</h3>
+      <p id="modalDetalle"></p>
+      <p id="modalPrecioUnitario"></p>
+      <p id="modalCliente"></p>
+      <p id="modalTotal"></p>
+      <button class="close-btn" onclick="cerrarModal()">Cerrar</button>
+    </div>
+  </div>
+
   <script>
     let productos = JSON.parse(localStorage.getItem("productos")) || [];
     let historial = JSON.parse(localStorage.getItem("historial")) || [];
+    let mecanicos = JSON.parse(localStorage.getItem("mecanicos")) || [];
 
     function guardar() {
       localStorage.setItem("productos", JSON.stringify(productos));
       localStorage.setItem("historial", JSON.stringify(historial));
+      localStorage.setItem("mecanicos", JSON.stringify(mecanicos));
     }
 
-    // --- Productos ---
+    function registrarMecanico() {
+      let nombre = document.getElementById("nombreMecanico").value;
+      let porcentaje = parseFloat(document.getElementById("porcentajeMecanico").value);
+      if (!nombre) return alert("Ingrese el nombre del mecánico");
+
+      mecanicos.push({nombre, porcentaje});
+      historial.push({
+        fecha:new Date().toISOString().slice(0,10),
+        tipo:"mecanico",
+        detalle:`Nuevo mecánico: ${nombre} (Porcentaje fijo: ${porcentaje*100}%)`,
+        monto:0
+      });
+      guardar();
+      actualizarSelects();
+      document.getElementById("nombreMecanico").value = "";
+      document.getElementById("porcentajeMecanico").value = "0";
+      alert("Mecánico registrado");
+    }
+
     function registrarProducto() {
       let nombre = document.getElementById("nombreProducto").value;
       let precio = parseFloat(document.getElementById("precioProducto").value);
@@ -105,102 +206,71 @@
       alert("Producto registrado");
     }
 
-    function editarProducto() {
-      let idx = document.getElementById("productoEditar").value;
-      if (idx==="") return alert("Seleccione un producto para editar");
+    function actualizarSelects() {
+      let opciones = productos.map((p,i)=>`<option value="${i}">${p.nombre} (Stock:${p.cantidad})</option>`).join("");
+      document.getElementById("productoVenta").innerHTML = opciones;
+      document.getElementById("productoCompra").innerHTML = opciones;
+      document.getElementById("productoEditar").innerHTML = `<option value="">-- Nuevo Producto --</option>` + opciones;
 
-      let nombre = document.getElementById("nombreProducto").value;
-      let precio = parseFloat(document.getElementById("precioProducto").value);
-      let cantidad = parseInt(document.getElementById("cantidadProducto").value);
-
-      if (!nombre || precio<=0 || cantidad<0) return alert("Datos inválidos");
-
-      let producto = productos[idx];
-      let detalleCambios = `Editado ${producto.nombre} → ${nombre}, Precio:${precio}, Cantidad:${cantidad}`;
-
-      productos[idx] = {nombre, precio, cantidad};
-      historial.push({
-        fecha:new Date().toISOString().slice(0,10),
-        tipo:"edicion",
-        detalle:detalleCambios,
-        monto:0
-      });
-      guardar();
-      actualizarSelects();
-      mostrarHistorial();
-      limpiarInputs();
-      alert("Producto editado");
+      let opcionesMec = `<option value="">Cliente</option>` + mecanicos.map((m,i)=>`<option value="${i}">${m.nombre} (+${m.porcentaje*100}%)</option>`).join("");
+      document.getElementById("mecanicoVenta").innerHTML = opcionesMec;
     }
 
-    function cargarProducto() {
-      let idx = document.getElementById("productoEditar").value;
-      if (idx==="") { limpiarInputs(); return; }
-      let producto = productos[idx];
-      document.getElementById("nombreProducto").value = producto.nombre;
-      document.getElementById("precioProducto").value = producto.precio;
-      document.getElementById("cantidadProducto").value = producto.cantidad;
+    function actualizarVistaPrevia() {
+      let idxProd = document.getElementById("productoVenta").value;
+      let idxMec = document.getElementById("mecanicoVenta").value;
+      let extra = parseFloat(document.getElementById("extraPorcentaje").value);
+
+      if (idxProd === "") {
+        document.getElementById("vistaPrevia").innerText = "💲 Precio unitario final: -";
+        return;
+      }
+
+      let producto = productos[idxProd];
+      let precioBase = producto.precio * 1.16;
+      let porcentajeMec = idxMec !== "" ? mecanicos[idxMec].porcentaje : 0;
+      let precioFinal = precioBase * (1 + porcentajeMec) * (1 + extra);
+      document.getElementById("vistaPrevia").innerText = `💲 Precio unitario final: ${precioFinal.toFixed(2)}`;
     }
 
-    function limpiarInputs() {
-      document.getElementById("productoEditar").value = "";
-      document.getElementById("nombreProducto").value = "";
-      document.getElementById("precioProducto").value = "";
-      document.getElementById("cantidadProducto").value = "";
-      document.getElementById("costoRegistro").value = "";
-    }
-
-    // --- Ventas y Compras ---
     function registrarVenta() {
       let idx = document.getElementById("productoVenta").value;
       let cantidad = parseInt(document.getElementById("cantidadVenta").value);
+      let idxMec = document.getElementById("mecanicoVenta").value;
+      let extra = parseFloat(document.getElementById("extraPorcentaje").value);
+
       if (idx==="" || cantidad<=0) return alert("Datos inválidos");
 
       let producto = productos[idx];
       if (producto.cantidad < cantidad) return alert("No hay suficiente stock");
 
       producto.cantidad -= cantidad;
-      let monto = producto.precio * cantidad;
+      let precioBase = producto.precio * 1.16;
+      let porcentajeMec = idxMec !== "" ? mecanicos[idxMec].porcentaje : 0;
+      let nombreMec = idxMec !== "" ? mecanicos[idxMec].nombre : "Cliente";
+      let precioFinal = precioBase * (1 + porcentajeMec) * (1 + extra);
+      let monto = precioFinal * cantidad;
 
       historial.push({
         fecha:new Date().toISOString().slice(0,10),
         tipo:"venta",
-        detalle:`${cantidad} x ${producto.nombre}`,
-        monto:monto
+        detalle:`${cantidad} x ${producto.nombre} - Vendedor: ${nombreMec}`,
+        monto:monto.toFixed(2)
       });
       guardar();
       mostrarHistorial();
       actualizarSelects();
-      alert("Venta registrada");
+      actualizarVistaPrevia();
+
+      document.getElementById("modalDetalle").innerText = `Producto: ${cantidad} x ${producto.nombre}`;
+      document.getElementById("modalPrecioUnitario").innerText = `Precio unitario final: $${precioFinal.toFixed(2)}`;
+      document.getElementById("modalCliente").innerText = `Vendido a: ${nombreMec}`;
+      document.getElementById("modalTotal").innerText = `Total de la venta: $${monto.toFixed(2)}`;
+      document.getElementById("ventaModal").style.display = "flex";
     }
 
-    function registrarCompra() {
-      let idx = document.getElementById("productoCompra").value;
-      let cantidad = parseInt(document.getElementById("cantidadCompra").value);
-      let costo = parseFloat(document.getElementById("costoCompra").value);
-
-      if (idx==="" || cantidad<=0 || costo<=0) return alert("Datos inválidos");
-
-      let producto = productos[idx];
-      producto.cantidad += cantidad;
-
-      historial.push({
-        fecha:new Date().toISOString().slice(0,10),
-        tipo:"compra",
-        detalle:`${cantidad} x ${producto.nombre}`,
-        monto:-costo
-      });
-      guardar();
-      mostrarHistorial();
-      actualizarSelects();
-      alert("Compra registrada");
-    }
-
-    // --- Selects y Historial ---
-    function actualizarSelects() {
-      let opciones = productos.map((p,i)=>`<option value="${i}">${p.nombre} (Stock:${p.cantidad})</option>`).join("");
-      document.getElementById("productoVenta").innerHTML = opciones;
-      document.getElementById("productoCompra").innerHTML = opciones;
-      document.getElementById("productoEditar").innerHTML = `<option value="">-- Nuevo Producto --</option>` + opciones;
+    function cerrarModal() {
+      document.getElementById("ventaModal").style.display = "none";
     }
 
     function mostrarHistorial() {
@@ -208,28 +278,36 @@
       let filtroFecha = document.getElementById("filtroFecha").value;
       let tbody = document.getElementById("tablaHistorial");
       tbody.innerHTML = "";
-
       let ganancia = 0;
       historial.forEach(h=>{
         if ((filtroTipo==="todos" || h.tipo===filtroTipo) && (!filtroFecha || h.fecha===filtroFecha)) {
-          let row = `<tr><td>${h.fecha}</td><td>${h.tipo}</td><td>${h.detalle}</td><td>${h.monto}</td></tr>`;
-          tbody.innerHTML += row;
-
-          // ✅ La ganancia ahora se calcula con los elementos filtrados
-          ganancia += h.monto;
+          tbody.innerHTML += `<tr><td>${h.fecha}</td><td>${h.tipo}</td><td>${h.detalle}</td><td>${h.monto}</td></tr>`;
+          ganancia += parseFloat(h.monto);
         }
       });
-      document.getElementById("ganancia").innerText = ganancia;
+      document.getElementById("ganancia").innerText = ganancia.toFixed(2);
     }
 
-    // --- Exportar/Importar JSON ---
+    function registrarCompra() {
+      let idx = document.getElementById("productoCompra").value;
+      let cantidad = parseInt(document.getElementById("cantidadCompra").value);
+      let costo = parseFloat(document.getElementById("costoCompra").value);
+      if (idx==="" || cantidad<=0 || costo<=0) return alert("Datos inválidos");
+      productos[idx].cantidad += cantidad;
+      historial.push({fecha:new Date().toISOString().slice(0,10), tipo:"compra", detalle:`${cantidad} x ${productos[idx].nombre}`, monto:-costo});
+      guardar();
+      mostrarHistorial();
+      actualizarSelects();
+      alert("Compra registrada");
+    }
+
     function exportarHistorial() {
-      const dataStr = JSON.stringify({productos,historial}, null, 2);
+      const dataStr = JSON.stringify({productos,historial,mecanicos}, null, 2);
       const blob = new Blob([dataStr], {type:"application/json"});
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `historial_gimnasio_${new Date().toISOString().slice(0,10)}.json`;
+      a.download = `historial_taller_${new Date().toISOString().slice(0,10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -241,35 +319,33 @@
       reader.onload = e => {
         try {
           const data = JSON.parse(e.target.result);
-          if (data.productos && data.historial) {
+          if (data.productos && data.historial && data.mecanicos) {
             productos = data.productos;
             historial = data.historial;
+            mecanicos = data.mecanicos;
             guardar();
             actualizarSelects();
             mostrarHistorial();
+            actualizarVistaPrevia();
             alert("Importación exitosa");
-          } else {
-            alert("Archivo inválido");
-          }
-        } catch(err) {
-          alert("Error al leer JSON");
-        }
+          } else alert("Archivo inválido");
+        } catch(err) { alert("Error al leer el archivo"); }
       };
       reader.readAsText(file);
     }
 
-    // --- Limpieza general ---
     function limpiezaGeneral() {
-      if (!confirm("¿Seguro que desea limpiar todo el sistema? Se hará un respaldo automático.")) return;
-      exportarHistorial(); // respaldo automático
+      exportarHistorial();
       productos = [];
       historial = [];
+      mecanicos = [];
       guardar();
       actualizarSelects();
       mostrarHistorial();
-      alert("Sistema limpiado y respaldo generado");
+      alert("Sistema limpio, respaldo generado");
     }
 
+    // Inicializar
     actualizarSelects();
     mostrarHistorial();
   </script>
