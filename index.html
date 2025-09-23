@@ -7,7 +7,7 @@
     body { background:#121212; color:#fff; font-family:Arial,sans-serif; margin:0; padding:1rem; }
     h2 { color:#ffcc00; }
     .card { background:#1e1e1e; padding:1rem; margin:1rem 0; border-radius:8px; }
-    input, select, button { margin:.3rem; padding:.5rem; border-radius:5px; border:none; }
+    input, select, button, datalist { margin:.3rem; padding:.5rem; border-radius:5px; border:none; }
     button { background:#ffcc00; cursor:pointer; font-weight:bold; }
     table { width:100%; border-collapse:collapse; margin-top:1rem; }
     th, td { border:1px solid #444; padding:.5rem; text-align:center; }
@@ -30,7 +30,7 @@
       background: #222;
       padding: 2rem;
       border-radius: 10px;
-      max-width: 600px;       /* Más grande */
+      max-width: 600px; 
       width: 90%;
       max-height: 80%;
       overflow-y: auto;
@@ -53,6 +53,7 @@
       from { opacity: 0; transform: scale(0.9); }
       to { opacity: 1; transform: scale(1); }
     }
+    ul { text-align:left; margin:0; padding-left:20px; }
   </style>
 </head>
 <body>
@@ -90,7 +91,8 @@
   <!-- Registrar venta -->
   <div class="card">
     <h2>💰 Registrar Venta</h2>
-    <select id="productoVenta" onchange="actualizarVistaPrevia()"></select>
+    <input list="productosLista" id="productoVentaInput" placeholder="Buscar producto" oninput="seleccionarProducto()">
+    <datalist id="productosLista"></datalist>
     <input id="cantidadVenta" type="number" placeholder="Cantidad"><br>
     <label>Mecánico:</label>
     <select id="mecanicoVenta" onchange="actualizarVistaPrevia()"></select><br>
@@ -104,6 +106,17 @@
       <option value="0.70">70%</option>
     </select><br>
     <div id="vistaPrevia">💲 Precio unitario final: -</div>
+
+    <!-- Lista de compra añadida -->
+    <button onclick="agregarProductoLista()">➕ Agregar a la lista</button>
+    <table>
+      <thead>
+        <tr><th>Producto</th><th>Cantidad</th><th>Precio Unitario</th><th>Total</th><th>Acción</th></tr>
+      </thead>
+      <tbody id="listaCompra"></tbody>
+    </table>
+    <h3>Total acumulado: 💲<span id="totalLista">0.00</span></h3>
+
     <button onclick="registrarVenta()">Registrar Venta</button>
   </div>
 
@@ -147,7 +160,6 @@
     <div class="modal-content">
       <h3>✅ Venta Registrada</h3>
       <p id="modalDetalle"></p>
-      <p id="modalPrecioUnitario"></p>
       <p id="modalCliente"></p>
       <p id="modalTotal"></p>
       <button class="close-btn" onclick="cerrarModal()">Cerrar</button>
@@ -158,6 +170,17 @@
     let productos = JSON.parse(localStorage.getItem("productos")) || [];
     let historial = JSON.parse(localStorage.getItem("historial")) || [];
     let mecanicos = JSON.parse(localStorage.getItem("mecanicos")) || [];
+    let listaTemporal = [];
+    let productoSeleccionadoIndex = null;
+
+    // Función para obtener fecha en CDMX
+    function fechaCDMX() {
+      let fecha = new Date();
+      // Ajuste a GMT-6 / CDMX
+      let offset = -6; // Horario estándar CDMX
+      fecha.setHours(fecha.getUTCHours() + offset);
+      return fecha.toISOString().slice(0,10);
+    }
 
     function guardar() {
       localStorage.setItem("productos", JSON.stringify(productos));
@@ -172,7 +195,7 @@
 
       mecanicos.push({nombre, porcentaje});
       historial.push({
-        fecha:new Date().toISOString().slice(0,10),
+        fecha: fechaCDMX(),
         tipo:"mecanico",
         detalle:`Nuevo mecánico: ${nombre} (Porcentaje fijo: ${porcentaje*100}%)`,
         monto:0
@@ -194,7 +217,7 @@
 
       productos.push({nombre, precio, cantidad});
       historial.push({
-        fecha:new Date().toISOString().slice(0,10),
+        fecha: fechaCDMX(),
         tipo:"registro",
         detalle:`Nuevo producto: ${nombre} (Precio ${precio}, Stock ${cantidad})`,
         monto:-costoRegistro
@@ -208,23 +231,34 @@
 
     function actualizarSelects() {
       let opciones = productos.map((p,i)=>`<option value="${i}">${p.nombre} (Stock:${p.cantidad})</option>`).join("");
-      document.getElementById("productoVenta").innerHTML = opciones;
       document.getElementById("productoCompra").innerHTML = opciones;
       document.getElementById("productoEditar").innerHTML = `<option value="">-- Nuevo Producto --</option>` + opciones;
+
+      // Autocomplete datalist
+      let lista = productos.map((p,i)=>`<option value="${i}-${p.nombre}">${p.nombre} (Stock:${p.cantidad})</option>`).join("");
+      document.getElementById("productosLista").innerHTML = lista;
 
       let opcionesMec = `<option value="">Cliente</option>` + mecanicos.map((m,i)=>`<option value="${i}">${m.nombre} (+${m.porcentaje*100}%)</option>`).join("");
       document.getElementById("mecanicoVenta").innerHTML = opcionesMec;
     }
 
+    function seleccionarProducto() {
+      let input = document.getElementById("productoVentaInput").value;
+      let index = input.split("-")[0];
+      if (productos[index]) {
+        productoSeleccionadoIndex = parseInt(index);
+        actualizarVistaPrevia();
+      } else {
+        productoSeleccionadoIndex = null;
+        document.getElementById("vistaPrevia").innerText = "💲 Precio unitario final: -";
+      }
+    }
+
     function actualizarVistaPrevia() {
-      let idxProd = document.getElementById("productoVenta").value;
+      if (productoSeleccionadoIndex === null) return;
+      let idxProd = productoSeleccionadoIndex;
       let idxMec = document.getElementById("mecanicoVenta").value;
       let extra = parseFloat(document.getElementById("extraPorcentaje").value);
-
-      if (idxProd === "") {
-        document.getElementById("vistaPrevia").innerText = "💲 Precio unitario final: -";
-        return;
-      }
 
       let producto = productos[idxProd];
       let precioBase = producto.precio * 1.16;
@@ -233,39 +267,83 @@
       document.getElementById("vistaPrevia").innerText = `💲 Precio unitario final: ${precioFinal.toFixed(2)}`;
     }
 
-    function registrarVenta() {
-      let idx = document.getElementById("productoVenta").value;
+    function agregarProductoLista() {
+      if (productoSeleccionadoIndex === null) return alert("Seleccione un producto válido");
       let cantidad = parseInt(document.getElementById("cantidadVenta").value);
       let idxMec = document.getElementById("mecanicoVenta").value;
       let extra = parseFloat(document.getElementById("extraPorcentaje").value);
 
-      if (idx==="" || cantidad<=0) return alert("Datos inválidos");
-
-      let producto = productos[idx];
+      if (cantidad <= 0) return alert("Cantidad inválida");
+      let producto = productos[productoSeleccionadoIndex];
       if (producto.cantidad < cantidad) return alert("No hay suficiente stock");
 
-      producto.cantidad -= cantidad;
       let precioBase = producto.precio * 1.16;
       let porcentajeMec = idxMec !== "" ? mecanicos[idxMec].porcentaje : 0;
-      let nombreMec = idxMec !== "" ? mecanicos[idxMec].nombre : "Cliente";
       let precioFinal = precioBase * (1 + porcentajeMec) * (1 + extra);
-      let monto = precioFinal * cantidad;
 
+      listaTemporal.push({idx:productoSeleccionadoIndex, cantidad, precioFinal, nombre: producto.nombre, total: precioFinal*cantidad, idxMec, extra});
+      mostrarListaTemporal();
+    }
+
+    function mostrarListaTemporal() {
+      let tbody = document.getElementById("listaCompra");
+      tbody.innerHTML = "";
+      let total = 0;
+      listaTemporal.forEach((item, i) => {
+        tbody.innerHTML += `<tr>
+          <td>${item.nombre}</td>
+          <td>${item.cantidad}</td>
+          <td>${item.precioFinal.toFixed(2)}</td>
+          <td>${item.total.toFixed(2)}</td>
+          <td><button onclick="eliminarDeLista(${i})">❌</button></td>
+        </tr>`;
+        total += item.total;
+      });
+      document.getElementById("totalLista").innerText = total.toFixed(2);
+    }
+
+    function eliminarDeLista(i) {
+      listaTemporal.splice(i, 1);
+      mostrarListaTemporal();
+    }
+
+    function registrarVenta() {
+      if (listaTemporal.length === 0) return alert("No hay productos en la lista");
+      let detalle = [];
+      let total = 0;
+      let clienteInfo = "";
+      listaTemporal.forEach(item => {
+        productos[item.idx].cantidad -= item.cantidad;
+        let mecNombre = item.idxMec !== "" ? mecanicos[item.idxMec].nombre : "Cliente";
+        detalle.push({
+          producto: item.nombre,
+          cantidad: item.cantidad,
+          precioUnitario: item.precioFinal.toFixed(2),
+          total: item.total.toFixed(2),
+          mecNombre: mecNombre,
+          extra: (item.extra*100).toFixed(0)+"%"
+        });
+        total += item.total;
+        clienteInfo = mecNombre;
+      });
       historial.push({
-        fecha:new Date().toISOString().slice(0,10),
-        tipo:"venta",
-        detalle:`${cantidad} x ${producto.nombre} - Vendedor: ${nombreMec}`,
-        monto:monto.toFixed(2)
+        fecha: fechaCDMX(),
+        tipo: "venta",
+        detalle: detalle,
+        monto: total.toFixed(2)
       });
       guardar();
       mostrarHistorial();
       actualizarSelects();
-      actualizarVistaPrevia();
+      listaTemporal = [];
+      mostrarListaTemporal();
+      document.getElementById("productoVentaInput").value = "";
+      productoSeleccionadoIndex = null;
 
-      document.getElementById("modalDetalle").innerText = `Producto: ${cantidad} x ${producto.nombre}`;
-      document.getElementById("modalPrecioUnitario").innerText = `Precio unitario final: $${precioFinal.toFixed(2)}`;
-      document.getElementById("modalCliente").innerText = `Vendido a: ${nombreMec}`;
-      document.getElementById("modalTotal").innerText = `Total de la venta: $${monto.toFixed(2)}`;
+      let modalDetalle = detalle.map(d=>`${d.cantidad} x ${d.producto} (Para: ${d.mecNombre}, Extra: ${d.extra})`).join(", ");
+      document.getElementById("modalDetalle").innerText = `Productos: ${modalDetalle}`;
+      document.getElementById("modalCliente").innerText = `Cliente / Mecánico: ${clienteInfo}`;
+      document.getElementById("modalTotal").innerText = `Total: $${total.toFixed(2)}`;
       document.getElementById("ventaModal").style.display = "flex";
     }
 
@@ -281,71 +359,19 @@
       let ganancia = 0;
       historial.forEach(h=>{
         if ((filtroTipo==="todos" || h.tipo===filtroTipo) && (!filtroFecha || h.fecha===filtroFecha)) {
-          tbody.innerHTML += `<tr><td>${h.fecha}</td><td>${h.tipo}</td><td>${h.detalle}</td><td>${h.monto}</td></tr>`;
+          let detalleHTML = "";
+          if (Array.isArray(h.detalle)) {
+            detalleHTML = "<ul>" + h.detalle.map(d=>`<li>${d.cantidad} x ${d.producto} (Para: ${d.mecNombre}, Extra: ${d.extra})</li>`).join("") + "</ul>";
+          } else {
+            detalleHTML = h.detalle;
+          }
+          tbody.innerHTML += `<tr><td>${h.fecha}</td><td>${h.tipo}</td><td>${detalleHTML}</td><td>${h.monto}</td></tr>`;
           ganancia += parseFloat(h.monto);
         }
       });
       document.getElementById("ganancia").innerText = ganancia.toFixed(2);
     }
 
-    function registrarCompra() {
-      let idx = document.getElementById("productoCompra").value;
-      let cantidad = parseInt(document.getElementById("cantidadCompra").value);
-      let costo = parseFloat(document.getElementById("costoCompra").value);
-      if (idx==="" || cantidad<=0 || costo<=0) return alert("Datos inválidos");
-      productos[idx].cantidad += cantidad;
-      historial.push({fecha:new Date().toISOString().slice(0,10), tipo:"compra", detalle:`${cantidad} x ${productos[idx].nombre}`, monto:-costo});
-      guardar();
-      mostrarHistorial();
-      actualizarSelects();
-      alert("Compra registrada");
-    }
-
-    function exportarHistorial() {
-      const dataStr = JSON.stringify({productos,historial,mecanicos}, null, 2);
-      const blob = new Blob([dataStr], {type:"application/json"});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `historial_taller_${new Date().toISOString().slice(0,10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    function importarHistorial(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = e => {
-        try {
-          const data = JSON.parse(e.target.result);
-          if (data.productos && data.historial && data.mecanicos) {
-            productos = data.productos;
-            historial = data.historial;
-            mecanicos = data.mecanicos;
-            guardar();
-            actualizarSelects();
-            mostrarHistorial();
-            actualizarVistaPrevia();
-            alert("Importación exitosa");
-          } else alert("Archivo inválido");
-        } catch(err) { alert("Error al leer el archivo"); }
-      };
-      reader.readAsText(file);
-    }
-
-    function limpiezaGeneral() {
-      exportarHistorial();
-      productos = [];
-      historial = [];
-      mecanicos = [];
-      guardar();
-      actualizarSelects();
-      mostrarHistorial();
-      alert("Sistema limpio, respaldo generado");
-    }
-
-    // Inicializar
     actualizarSelects();
     mostrarHistorial();
   </script>
