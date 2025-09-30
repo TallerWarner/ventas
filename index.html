@@ -86,6 +86,7 @@
     <input id="costoRegistro" type="number" placeholder="Costo total (opcional)">
     <button onclick="registrarProducto()">Agregar Producto</button>
     <button onclick="editarProducto()">Editar Producto</button>
+    <button id="btnEliminar" onclick="eliminarProducto()" style="display:none; background:red; color:white;">Eliminar Producto ❌</button>
   </div>
 
   <!-- Registrar venta -->
@@ -107,7 +108,6 @@
     </select><br>
     <div id="vistaPrevia">💲 Precio unitario final: -</div>
 
-    <!-- Lista de compra añadida -->
     <button onclick="agregarProductoLista()">➕ Agregar a la lista</button>
     <table>
       <thead>
@@ -173,11 +173,9 @@
     let listaTemporal = [];
     let productoSeleccionadoIndex = null;
 
-    // Función para obtener fecha en CDMX
     function fechaCDMX() {
       let fecha = new Date();
-      // Ajuste a GMT-6 / CDMX
-      let offset = -6; // Horario estándar CDMX
+      let offset = -6;
       fecha.setHours(fecha.getUTCHours() + offset);
       return fecha.toISOString().slice(0,10);
     }
@@ -186,55 +184,78 @@
       localStorage.setItem("productos", JSON.stringify(productos));
       localStorage.setItem("historial", JSON.stringify(historial));
       localStorage.setItem("mecanicos", JSON.stringify(mecanicos));
-    }
-
-    function registrarMecanico() {
-      let nombre = document.getElementById("nombreMecanico").value;
-      let porcentaje = parseFloat(document.getElementById("porcentajeMecanico").value);
-      if (!nombre) return alert("Ingrese el nombre del mecánico");
-
-      mecanicos.push({nombre, porcentaje});
-      historial.push({
-        fecha: fechaCDMX(),
-        tipo:"mecanico",
-        detalle:`Nuevo mecánico: ${nombre} (Porcentaje fijo: ${porcentaje*100}%)`,
-        monto:0
-      });
-      guardar();
       actualizarSelects();
-      document.getElementById("nombreMecanico").value = "";
-      document.getElementById("porcentajeMecanico").value = "0";
-      alert("Mecánico registrado");
     }
 
+    // ===== Registro y edición de productos =====
     function registrarProducto() {
       let nombre = document.getElementById("nombreProducto").value;
       let precio = parseFloat(document.getElementById("precioProducto").value);
       let cantidad = parseInt(document.getElementById("cantidadProducto").value);
       let costoRegistro = parseFloat(document.getElementById("costoRegistro").value) || 0;
-
       if (!nombre || precio<=0 || cantidad<=0) return alert("Datos inválidos");
 
       productos.push({nombre, precio, cantidad});
-      historial.push({
-        fecha: fechaCDMX(),
-        tipo:"registro",
-        detalle:`Nuevo producto: ${nombre} (Precio ${precio}, Stock ${cantidad})`,
-        monto:-costoRegistro
-      });
+      historial.push({fecha: fechaCDMX(), tipo:"registro", detalle:`Nuevo producto: ${nombre} (Precio ${precio}, Stock ${cantidad})`, monto:-costoRegistro});
       guardar();
-      actualizarSelects();
-      mostrarHistorial();
       limpiarInputs();
       alert("Producto registrado");
     }
 
-    function actualizarSelects() {
-      let opciones = productos.map((p,i)=>`<option value="${i}">${p.nombre} (Stock:${p.cantidad})</option>`).join("");
-      document.getElementById("productoCompra").innerHTML = opciones;
-      document.getElementById("productoEditar").innerHTML = `<option value="">-- Nuevo Producto --</option>` + opciones;
+    function editarProducto() {
+      let idx = document.getElementById("productoEditar").value;
+      if(idx==="") return alert("Seleccione un producto para editar");
+      let nombre = document.getElementById("nombreProducto").value;
+      let precio = parseFloat(document.getElementById("precioProducto").value);
+      let cantidad = parseInt(document.getElementById("cantidadProducto").value);
+      if(!nombre || precio<=0 || cantidad<0) return alert("Datos inválidos");
 
-      // Autocomplete datalist
+      productos[idx] = {nombre, precio, cantidad};
+      historial.push({fecha: fechaCDMX(), tipo:"edicion", detalle:`Producto editado: ${nombre} (Precio ${precio}, Stock ${cantidad})`, monto:0});
+      guardar();
+      limpiarInputs();
+      document.getElementById("productoEditar").value="";
+      document.getElementById("btnEliminar").style.display="none";
+      alert("Producto editado");
+    }
+
+    function eliminarProducto() {
+      let idx = document.getElementById("productoEditar").value;
+      if(idx==="") return alert("Seleccione un producto para eliminar");
+      let nombre = productos[idx].nombre;
+      if(!confirm(`¿Seguro que deseas eliminar "${nombre}"?`)) return;
+
+      productos.splice(idx,1);
+      historial.push({fecha: fechaCDMX(), tipo:"eliminacion", detalle:`Producto eliminado: ${nombre}`, monto:0});
+      guardar();
+      limpiarInputs();
+      document.getElementById("productoEditar").value="";
+      document.getElementById("btnEliminar").style.display="none";
+      alert("Producto eliminado");
+    }
+
+    function cargarProducto() {
+      let idx = document.getElementById("productoEditar").value;
+      if(idx===""){ limpiarInputs(); document.getElementById("btnEliminar").style.display="none"; return; }
+      let p = productos[idx];
+      document.getElementById("nombreProducto").value = p.nombre;
+      document.getElementById("precioProducto").value = p.precio;
+      document.getElementById("cantidadProducto").value = p.cantidad;
+      document.getElementById("btnEliminar").style.display="inline-block";
+    }
+
+    function limpiarInputs() {
+      document.getElementById("nombreProducto").value="";
+      document.getElementById("precioProducto").value="";
+      document.getElementById("cantidadProducto").value="";
+      document.getElementById("costoRegistro").value="";
+    }
+
+    function actualizarSelects() {
+      let opcionesProductos = productos.map((p,i)=>`<option value="${i}">${p.nombre} (Stock:${p.cantidad})</option>`).join("");
+      document.getElementById("productoEditar").innerHTML = `<option value="">-- Nuevo Producto --</option>` + opcionesProductos;
+      document.getElementById("productoCompra").innerHTML = opcionesProductos;
+
       let lista = productos.map((p,i)=>`<option value="${i}-${p.nombre}">${p.nombre} (Stock:${p.cantidad})</option>`).join("");
       document.getElementById("productosLista").innerHTML = lista;
 
@@ -242,43 +263,52 @@
       document.getElementById("mecanicoVenta").innerHTML = opcionesMec;
     }
 
+    // ===== Registro de mecánicos =====
+    function registrarMecanico() {
+      let nombre = document.getElementById("nombreMecanico").value;
+      let porcentaje = parseFloat(document.getElementById("porcentajeMecanico").value);
+      if(!nombre) return alert("Ingrese el nombre del mecánico");
+
+      mecanicos.push({nombre, porcentaje});
+      historial.push({fecha: fechaCDMX(), tipo:"mecanico", detalle:`Nuevo mecánico: ${nombre} (Porcentaje fijo: ${porcentaje*100}%)`, monto:0});
+      guardar();
+      document.getElementById("nombreMecanico").value="";
+      document.getElementById("porcentajeMecanico").value="0";
+      alert("Mecánico registrado");
+    }
+
+    // ===== Registro y vista de ventas =====
     function seleccionarProducto() {
       let input = document.getElementById("productoVentaInput").value;
       let index = input.split("-")[0];
-      if (productos[index]) {
-        productoSeleccionadoIndex = parseInt(index);
-        actualizarVistaPrevia();
-      } else {
-        productoSeleccionadoIndex = null;
-        document.getElementById("vistaPrevia").innerText = "💲 Precio unitario final: -";
-      }
+      if(productos[index]){ productoSeleccionadoIndex = parseInt(index); actualizarVistaPrevia(); } 
+      else{ productoSeleccionadoIndex = null; document.getElementById("vistaPrevia").innerText = "💲 Precio unitario final: -"; }
     }
 
     function actualizarVistaPrevia() {
-      if (productoSeleccionadoIndex === null) return;
+      if(productoSeleccionadoIndex===null) return;
       let idxProd = productoSeleccionadoIndex;
       let idxMec = document.getElementById("mecanicoVenta").value;
       let extra = parseFloat(document.getElementById("extraPorcentaje").value);
 
       let producto = productos[idxProd];
       let precioBase = producto.precio * 1.16;
-      let porcentajeMec = idxMec !== "" ? mecanicos[idxMec].porcentaje : 0;
+      let porcentajeMec = idxMec!=="" ? mecanicos[idxMec].porcentaje : 0;
       let precioFinal = precioBase * (1 + porcentajeMec) * (1 + extra);
       document.getElementById("vistaPrevia").innerText = `💲 Precio unitario final: ${precioFinal.toFixed(2)}`;
     }
 
     function agregarProductoLista() {
-      if (productoSeleccionadoIndex === null) return alert("Seleccione un producto válido");
+      if(productoSeleccionadoIndex===null) return alert("Seleccione un producto válido");
       let cantidad = parseInt(document.getElementById("cantidadVenta").value);
       let idxMec = document.getElementById("mecanicoVenta").value;
       let extra = parseFloat(document.getElementById("extraPorcentaje").value);
-
-      if (cantidad <= 0) return alert("Cantidad inválida");
+      if(cantidad<=0) return alert("Cantidad inválida");
       let producto = productos[productoSeleccionadoIndex];
-      if (producto.cantidad < cantidad) return alert("No hay suficiente stock");
+      if(producto.cantidad<cantidad) return alert("No hay suficiente stock");
 
       let precioBase = producto.precio * 1.16;
-      let porcentajeMec = idxMec !== "" ? mecanicos[idxMec].porcentaje : 0;
+      let porcentajeMec = idxMec!=="" ? mecanicos[idxMec].porcentaje : 0;
       let precioFinal = precioBase * (1 + porcentajeMec) * (1 + extra);
 
       listaTemporal.push({idx:productoSeleccionadoIndex, cantidad, precioFinal, nombre: producto.nombre, total: precioFinal*cantidad, idxMec, extra});
@@ -289,7 +319,7 @@
       let tbody = document.getElementById("listaCompra");
       tbody.innerHTML = "";
       let total = 0;
-      listaTemporal.forEach((item, i) => {
+      listaTemporal.forEach((item,i)=>{
         tbody.innerHTML += `<tr>
           <td>${item.nombre}</td>
           <td>${item.cantidad}</td>
@@ -302,71 +332,40 @@
       document.getElementById("totalLista").innerText = total.toFixed(2);
     }
 
-    function eliminarDeLista(i) {
-      listaTemporal.splice(i, 1);
-      mostrarListaTemporal();
-    }
+    function eliminarDeLista(i){ listaTemporal.splice(i,1); mostrarListaTemporal(); }
 
-    function registrarVenta() {
-      if (listaTemporal.length === 0) return alert("No hay productos en la lista");
-      let detalle = [];
-      let total = 0;
-      let clienteInfo = "";
-      listaTemporal.forEach(item => {
+    function registrarVenta(){
+      if(listaTemporal.length===0) return alert("No hay productos en la lista");
+      let detalle = []; let total=0; let clienteInfo="";
+      listaTemporal.forEach(item=>{
         productos[item.idx].cantidad -= item.cantidad;
-        let mecNombre = item.idxMec !== "" ? mecanicos[item.idxMec].nombre : "Cliente";
-        detalle.push({
-          producto: item.nombre,
-          cantidad: item.cantidad,
-          precioUnitario: item.precioFinal.toFixed(2),
-          total: item.total.toFixed(2),
-          mecNombre: mecNombre,
-          extra: (item.extra*100).toFixed(0)+"%"
-        });
+        let mecNombre = item.idxMec!=="" ? mecanicos[item.idxMec].nombre : "Cliente";
+        detalle.push({producto:item.nombre, cantidad:item.cantidad, precioUnitario:item.precioFinal.toFixed(2), total:item.total.toFixed(2), mecNombre:mecNombre, extra:(item.extra*100).toFixed(0)+"%"});
         total += item.total;
         clienteInfo = mecNombre;
       });
-      historial.push({
-        fecha: fechaCDMX(),
-        tipo: "venta",
-        detalle: detalle,
-        monto: total.toFixed(2)
-      });
+      historial.push({fecha:fechaCDMX(), tipo:"venta", detalle:detalle, monto:total.toFixed(2)});
       guardar();
-      mostrarHistorial();
-      actualizarSelects();
-      listaTemporal = [];
-      mostrarListaTemporal();
-      document.getElementById("productoVentaInput").value = "";
-      productoSeleccionadoIndex = null;
-
+      listaTemporal=[]; mostrarListaTemporal(); document.getElementById("productoVentaInput").value=""; productoSeleccionadoIndex=null;
       let modalDetalle = detalle.map(d=>`${d.cantidad} x ${d.producto} (Para: ${d.mecNombre}, Extra: ${d.extra})`).join(", ");
       document.getElementById("modalDetalle").innerText = `Productos: ${modalDetalle}`;
       document.getElementById("modalCliente").innerText = `Cliente / Mecánico: ${clienteInfo}`;
       document.getElementById("modalTotal").innerText = `Total: $${total.toFixed(2)}`;
-      document.getElementById("ventaModal").style.display = "flex";
+      document.getElementById("ventaModal").style.display="flex";
     }
 
-    function cerrarModal() {
-      document.getElementById("ventaModal").style.display = "none";
-    }
+    function cerrarModal(){ document.getElementById("ventaModal").style.display="none"; }
 
     function mostrarHistorial() {
       let filtroTipo = document.getElementById("filtroTipo").value;
       let filtroFecha = document.getElementById("filtroFecha").value;
-      let tbody = document.getElementById("tablaHistorial");
-      tbody.innerHTML = "";
-      let ganancia = 0;
+      let tbody = document.getElementById("tablaHistorial"); tbody.innerHTML="";
+      let ganancia=0;
       historial.forEach(h=>{
-        if ((filtroTipo==="todos" || h.tipo===filtroTipo) && (!filtroFecha || h.fecha===filtroFecha)) {
-          let detalleHTML = "";
-          if (Array.isArray(h.detalle)) {
-            detalleHTML = "<ul>" + h.detalle.map(d=>`<li>${d.cantidad} x ${d.producto} (Para: ${d.mecNombre}, Extra: ${d.extra})</li>`).join("") + "</ul>";
-          } else {
-            detalleHTML = h.detalle;
-          }
+        if((filtroTipo==="todos" || h.tipo===filtroTipo) && (!filtroFecha || h.fecha===filtroFecha)){
+          let detalleHTML = Array.isArray(h.detalle) ? "<ul>" + h.detalle.map(d=>`<li>${d.cantidad} x ${d.producto} (Para: ${d.mecNombre}, Extra: ${d.extra})</li>`).join("") + "</ul>" : h.detalle;
           tbody.innerHTML += `<tr><td>${h.fecha}</td><td>${h.tipo}</td><td>${detalleHTML}</td><td>${h.monto}</td></tr>`;
-          ganancia += parseFloat(h.monto);
+          ganancia+=parseFloat(h.monto);
         }
       });
       document.getElementById("ganancia").innerText = ganancia.toFixed(2);
