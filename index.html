@@ -57,7 +57,7 @@
   </style>
 </head>
 <body>
-  <h1> Almacén de Ventas - Taller</h1>
+  <h1>Almacén de Ventas - Taller</h1>
 
   <!-- Registro de mecánicos -->
   <div class="card">
@@ -74,12 +74,11 @@
     <button onclick="registrarMecanico()">Registrar Mecánico</button>
   </div>
 
-  <!-- Registro de productos -->
+  <!-- Registrar / Editar Producto -->
   <div class="card">
     <h2>📦 Registrar / Editar Producto</h2>
-    <select id="productoEditar" onchange="cargarProducto()">
-      <option value="">-- Nuevo Producto --</option>
-    </select><br>
+    <input list="productosListaEditar" id="productoEditarInput" placeholder="Buscar producto" oninput="seleccionarProductoEditar()">
+    <datalist id="productosListaEditar"></datalist><br>
     <input id="codigoProducto" placeholder="Código del producto">
     <input id="nombreProducto" placeholder="Nombre">
     <input id="precioProducto" type="number" placeholder="Precio unitario">
@@ -93,8 +92,8 @@
   <!-- Registrar venta -->
   <div class="card">
     <h2>💰 Registrar Venta</h2>
-    <input list="productosLista" id="productoVentaInput" placeholder="Buscar producto" oninput="seleccionarProducto()">
-    <datalist id="productosLista"></datalist>
+    <input list="productosListaVenta" id="productoVentaInput" placeholder="Buscar producto" oninput="seleccionarProductoVenta()">
+    <datalist id="productosListaVenta"></datalist>
     <input id="cantidadVenta" type="number" placeholder="Cantidad"><br>
     <label>Mecánico:</label>
     <select id="mecanicoVenta" onchange="actualizarVistaPrevia()"></select><br>
@@ -117,14 +116,14 @@
       <tbody id="listaCompra"></tbody>
     </table>
     <h3>Total acumulado: 💲<span id="totalLista">0.00</span></h3>
-
     <button onclick="registrarVenta()">Registrar Venta</button>
   </div>
 
   <!-- Registrar compra -->
   <div class="card">
     <h2>🛒 Registrar Compra</h2>
-    <select id="productoCompra"></select>
+    <input list="productosListaCompra" id="productoCompraInput" placeholder="Buscar producto" oninput="seleccionarProductoCompra()">
+    <datalist id="productosListaCompra"></datalist>
     <input id="cantidadCompra" type="number" placeholder="Cantidad">
     <input id="costoCompra" type="number" placeholder="Costo total">
     <button onclick="registrarCompra()">Registrar Compra</button>
@@ -173,6 +172,8 @@ let historial = JSON.parse(localStorage.getItem("historial")) || [];
 let mecanicos = JSON.parse(localStorage.getItem("mecanicos")) || [];
 let listaTemporal = [];
 let productoSeleccionadoIndex = null;
+let productoCompraSeleccionadoIndex = null;
+let productoEditarSeleccionadoIndex = null;
 
 function fechaCDMX() {
   let fecha = new Date();
@@ -186,9 +187,8 @@ function guardar() {
   localStorage.setItem("historial", JSON.stringify(historial));
   localStorage.setItem("mecanicos", JSON.stringify(mecanicos));
   actualizarSelects();
-  mostrarHistorial(); // ✅ Actualiza historial en tiempo real
+  mostrarHistorial();
 }
-
 
 // ===== Registro y edición de productos =====
 function registrarProducto() {
@@ -207,8 +207,8 @@ function registrarProducto() {
 }
 
 function editarProducto() {
-  let idx = document.getElementById("productoEditar").value;
-  if(idx==="") return alert("Seleccione un producto para editar");
+  let idx = productoEditarSeleccionadoIndex;
+  if(idx===null) return alert("Seleccione un producto para editar");
   let codigo = document.getElementById("codigoProducto").value.trim();
   let nombre = document.getElementById("nombreProducto").value;
   let precio = parseFloat(document.getElementById("precioProducto").value);
@@ -219,14 +219,14 @@ function editarProducto() {
   historial.push({fecha: fechaCDMX(), tipo:"edicion", detalle:`Producto editado: ${nombre} (Código: ${codigo}, Precio ${precio}, Stock ${cantidad})`, monto:0});
   guardar();
   limpiarInputs();
-  document.getElementById("productoEditar").value="";
+  productoEditarSeleccionadoIndex = null;
   document.getElementById("btnEliminar").style.display="none";
   alert("Producto editado");
 }
 
 function eliminarProducto() {
-  let idx = document.getElementById("productoEditar").value;
-  if(idx==="") return alert("Seleccione un producto para eliminar");
+  let idx = productoEditarSeleccionadoIndex;
+  if(idx===null) return alert("Seleccione un producto para eliminar");
   let nombre = productos[idx].nombre;
   if(!confirm(`¿Seguro que deseas eliminar "${nombre}"?`)) return;
 
@@ -234,15 +234,14 @@ function eliminarProducto() {
   historial.push({fecha: fechaCDMX(), tipo:"eliminacion", detalle:`Producto eliminado: ${nombre}`, monto:0});
   guardar();
   limpiarInputs();
-  document.getElementById("productoEditar").value="";
+  productoEditarSeleccionadoIndex = null;
   document.getElementById("btnEliminar").style.display="none";
   alert("Producto eliminado");
 }
 
 function cargarProducto() {
-  let idx = document.getElementById("productoEditar").value;
-  if(idx===""){ limpiarInputs(); document.getElementById("btnEliminar").style.display="none"; return; }
-  let p = productos[idx];
+  if(productoEditarSeleccionadoIndex===null){ limpiarInputs(); document.getElementById("btnEliminar").style.display="none"; return; }
+  let p = productos[productoEditarSeleccionadoIndex];
   document.getElementById("codigoProducto").value = p.codigo;
   document.getElementById("nombreProducto").value = p.nombre;
   document.getElementById("precioProducto").value = p.precio;
@@ -260,11 +259,18 @@ function limpiarInputs() {
 
 function actualizarSelects() {
   let opcionesProductos = productos.map((p,i)=>`<option value="${i}">${p.codigo} - ${p.nombre} (Stock:${p.cantidad})</option>`).join("");
-  document.getElementById("productoEditar").innerHTML = `<option value="">-- Nuevo Producto --</option>` + opcionesProductos;
-  document.getElementById("productoCompra").innerHTML = opcionesProductos;
+  document.getElementById("productoEditarInput").innerHTML = "";
+  document.getElementById("productoCompraInput").innerHTML = "";
+  document.getElementById("productosListaVenta").innerHTML = "";
 
-  let lista = productos.map((p,i)=>`<option value="${i}-${p.nombre}">${p.codigo} - ${p.nombre} (Stock:${p.cantidad})</option>`).join("");
-  document.getElementById("productosLista").innerHTML = lista;
+  let listaEditar = productos.map((p,i)=>`<option value="${i}-${p.nombre}">${p.codigo} - ${p.nombre} (Stock:${p.cantidad})</option>`).join("");
+  document.getElementById("productosListaEditar").innerHTML = listaEditar;
+
+  let listaCompra = productos.map((p,i)=>`<option value="${i}-${p.nombre}">${p.codigo} - ${p.nombre} (Stock:${p.cantidad})</option>`).join("");
+  document.getElementById("productosListaCompra").innerHTML = listaCompra;
+
+  let listaVenta = productos.map((p,i)=>`<option value="${i}-${p.nombre}">${p.codigo} - ${p.nombre} (Stock:${p.cantidad})</option>`).join("");
+  document.getElementById("productosListaVenta").innerHTML = listaVenta;
 
   let opcionesMec = `<option value="">Cliente</option>` + mecanicos.map((m,i)=>`<option value="${i}">${m.nombre} (+${m.porcentaje*100}%)</option>`).join("");
   document.getElementById("mecanicoVenta").innerHTML = opcionesMec;
@@ -284,14 +290,29 @@ function registrarMecanico() {
   alert("Mecánico registrado");
 }
 
-// ===== Registro y vista de ventas =====
-function seleccionarProducto() {
+// ===== Funciones de selección idénticas a venta =====
+function seleccionarProductoVenta() {
   let input = document.getElementById("productoVentaInput").value;
-  let index = input.split("-")[0];
-  if(productos[index]){ productoSeleccionadoIndex = parseInt(index); actualizarVistaPrevia(); } 
+  let index = parseInt(input.split("-")[0]);
+  if(productos[index]){ productoSeleccionadoIndex = index; actualizarVistaPrevia(); }
   else{ productoSeleccionadoIndex = null; document.getElementById("vistaPrevia").innerText = "💲 Precio unitario final: -"; }
 }
 
+function seleccionarProductoCompra() {
+  let input = document.getElementById("productoCompraInput").value;
+  let index = parseInt(input.split("-")[0]);
+  if(productos[index]){ productoCompraSeleccionadoIndex = index; }
+  else{ productoCompraSeleccionadoIndex = null; }
+}
+
+function seleccionarProductoEditar() {
+  let input = document.getElementById("productoEditarInput").value;
+  let index = parseInt(input.split("-")[0]);
+  if(productos[index]){ productoEditarSeleccionadoIndex = index; cargarProducto(); }
+  else{ productoEditarSeleccionadoIndex = null; limpiarInputs(); }
+}
+
+// ===== Registro y vista de ventas =====
 function actualizarVistaPrevia() {
   if(productoSeleccionadoIndex===null) return;
   let idxProd = productoSeleccionadoIndex;
@@ -366,10 +387,12 @@ function cerrarModal(){ document.getElementById("ventaModal").style.display="non
 
 // ===== Registro de compras =====
 function registrarCompra() {
-  let idx = document.getElementById("productoCompra").value;
+  if(productoCompraSeleccionadoIndex===null) return alert("Seleccione un producto válido");
+  let idx = productoCompraSeleccionadoIndex;
   let cantidad = parseInt(document.getElementById("cantidadCompra").value);
   let costo = parseFloat(document.getElementById("costoCompra").value);
-  if(idx === "" || cantidad <= 0 || costo <= 0) return alert("Datos inválidos");
+  if(cantidad<=0 || costo<=0) return alert("Datos inválidos");
+
   productos[idx].cantidad += cantidad;
   historial.push({
     fecha: fechaCDMX(),
@@ -414,27 +437,6 @@ function importarHistorial(event) {
 }
 
 // ===== Limpieza general =====
-function limpiezaGeneral() {
-  if(!confirm("¿Desea limpiar todo el historial y productos? Se hará un respaldo automático.")) return;
-  const backup = JSON.stringify({productos, historial, mecanicos}, null, 2);
-  const blob = new Blob([backup], {type:"application/json"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `respaldo_${fechaCDMX()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  
-  productos = [];
-  historial = [];
-  mecanicos = [];
-  listaTemporal = [];
-  guardar();
-  mostrarHistorial();
-  alert("Limpieza general completada");
-}
-
 function limpiarHistorial() {
   if(!confirm("¿Desea eliminar todo el historial? Esta acción no afecta productos ni mecánicos.")) return;
   historial = [];
